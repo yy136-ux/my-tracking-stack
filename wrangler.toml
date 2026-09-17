@@ -1,4 +1,4 @@
-name = "__REPLACE_ME_PROJECT_NAME__"
+name = "my-tracking-stack"
 compatibility_date = "2025-03-01"
 pages_build_output_dir = "."
 
