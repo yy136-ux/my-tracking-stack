@@ -83,7 +83,7 @@ This is **not** for you if:
 | `docs/` | Reference documentation you can read if you're curious |
 | `.claude/skills/` | Claude Code skills that automate setup, verification, and extension |
 | `config/` | Per-product configuration (you edit one JSON file) |
-
+ 
 ## Support
 
 <!-- TODO: fill in support channel (Slack? forum? email?) before launch -->
