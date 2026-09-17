@@ -2,10 +2,7 @@ name = "my-tracking-stack"
 compatibility_date = "2025-03-01"
 pages_build_output_dir = "."
 
-[[d1_databases]]
-binding = "DB"
-database_name = "__REPLACE_ME_DB_NAME__"
-database_id = "__REPLACE_ME_DB_ID__"
+
 
 # ---------------------------------------------------------------------------
 # The `deploy-stack` skill fills in the three __REPLACE_ME_*__ values
