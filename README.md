@@ -6,6 +6,7 @@ and sales pages.
 
 **Version**: see `VERSION`
 
+
 ## What you get
 
 - **First-party cookies** that survive Safari ITP (400-day server-set from the edge).
