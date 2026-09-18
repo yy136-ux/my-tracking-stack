@@ -7,7 +7,7 @@ and sales pages.
 **Version**: see `VERSION`   
 
  
-## What you get 
+## What you get  
 
 - **First-party cookies** that survive Safari ITP (400-day server-set from the edge).
 - **Server-side conversion events** to Meta CAPI, GA4 Measurement Protocol,
