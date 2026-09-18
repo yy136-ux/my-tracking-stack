@@ -9,7 +9,7 @@ export async function onRequestOptions() {
   });
 }
 
-export async function onRequestPost(context) {  
+export async function onRequestPost(context) {
   const { request, env } = context;
 
   const corsHeaders = {
@@ -78,40 +78,20 @@ export async function onRequestPost(context) {
         .join('');
     }
 
-    // Meta CAPI expects phone digits INCLUDING country code + area code
-    // (ex: `16505554444` or `5511987654321`). Users typing their own
-    // number into a lead form almost never include the country code, so
-    // we prepend a default. `countryCode` defaults to 55 (Brazil);
-    // recipients elsewhere set `env.DEFAULT_COUNTRY_CODE` — see the
-    // "decisions the recipient must make" table in CLAUDE.md.
-    //
-    // Detection is length-based and best-effort. A recipient whose
-    // audience mixes country codes (rare for the target audience) gets
-    // marginal mismatches; fixing that requires a real phone-parsing
-    // library which is too heavy for an edge worker.
     function normalizePhone(ph, countryCode) {
       if (!ph) return '';
       const cc = String(countryCode || '55');
       const digits = ph.replace(/\D/g, '').replace(/^0+/, '');
       if (!digits) return '';
-      // Already starts with the configured country code at a plausible
-      // total length → leave as-is.
       if (digits.startsWith(cc) && digits.length >= cc.length + 8 && digits.length <= cc.length + 11) {
         return digits;
       }
-      // Plausibly a locally-formatted number (no country code yet) → prepend.
       if (digits.length >= 8 && digits.length <= 11) {
         return cc + digits;
       }
-      // Any other length (likely an already-international foreign number
-      // whose country code isn't our default) → leave untouched.
       return digits;
     }
 
-    // Meta Advanced Matching spec for fn/ln is lowercase only — do NOT
-    // strip punctuation/accents. Meta's graph preserves apostrophes,
-    // hyphens, and diacritics; stripping them breaks hash matches for
-    // names like "O'Brien", "Garcia-Rodriguez", "João".
     function normalizeName(name) {
       if (!name) return '';
       return name.trim().toLowerCase();
@@ -127,27 +107,22 @@ export async function onRequestPost(context) {
     const { isBot, botReason } = detectBot(userAgent);
 
     // --- Fan out to ad platforms (skipped for bot UAs) ---
-    // Bots still get logged to event_log so the dashboard's bot-filter
-    // tracking-health metric stays accurate; only the outbound CAPI /
-    // GA4 fires are suppressed. Without this gate, every link-unfurl
-    // crawl (WhatsApp preview, Slackbot, facebookexternalhit, etc.)
-    // would burn a Meta CAPI event and pollute the Pixel.
     const results = isBot ? [] : await Promise.allSettled([
-      sendToMeta({ body, clientIp, userAgent, fbp, fbc, hashedEm, hashedFn, hashedLn, hashedPh, hashedExternalId, sessionData, env }),
+      sendToMetas({ body, clientIp, userAgent, fbp, fbc, hashedEm, hashedFn, hashedLn, hashedPh, hashedExternalId, sessionData, env }),
       sendToGA4({ body, gaClientId, gaSessionId, hashedEm, env }),
     ]);
 
-    // --- Parse Meta result ---
+    // --- Parse Meta results (use first pixel for logging) ---
     let metaStatusCode = 0, metaResponseOk = 0, metaResponseBody = '', metaPayloadSent = null;
-    if (results[0]?.status === 'fulfilled' && results[0].value) {
-      const v = results[0].value;
-      metaPayloadSent = v.payload;
-      if (v.skipped) {
-        metaResponseBody = `skipped: ${v.skipped}`;
-      } else if (v.response) {
-        metaStatusCode = v.response.status;
-        metaResponseOk = v.response.ok ? 1 : 0;
-        try { metaResponseBody = await v.response.text(); } catch (e) { metaResponseBody = `Read error: ${e.message}`; }
+    if (results[0]?.status === 'fulfilled' && Array.isArray(results[0].value) && results[0].value.length > 0) {
+      const first = results[0].value[0];
+      metaPayloadSent = first.payload ?? null;
+      if (first.response) {
+        metaStatusCode = first.response.status;
+        metaResponseOk = first.response.ok ? 1 : 0;
+        try { metaResponseBody = await first.response.text(); } catch (e) { metaResponseBody = `Read error: ${e.message}`; }
+      } else if (first.error) {
+        metaResponseBody = `Fetch error: ${first.error}`;
       }
     } else if (results[0]?.status === 'rejected') {
       metaResponseBody = `Fetch error: ${results[0].reason?.message || 'unknown'}`;
@@ -172,9 +147,6 @@ export async function onRequestPost(context) {
     const rawEmail = userData.em || '';
 
     // --- Log to D1 (background) ---
-    // Skip PageView: conversions fire regardless of this log, and the health
-    // dashboard only reports Lead/Purchase. Dropping PageView cuts ~70% of
-    // event_log writes so per-instance D1 stays healthy long-term.
     const loggedEventName = (body.event_name || '').toLowerCase();
     const shouldLogEvent = loggedEventName !== 'pageview' && loggedEventName !== 'page_view';
     const browserInfo = parseBrowser(userAgent);
@@ -226,18 +198,31 @@ export async function onRequestPost(context) {
 }
 
 // -------------------------------------------------------
-// META CAPI
+// META CAPI - Multi-pixel sender
 // -------------------------------------------------------
-async function sendToMeta({ body, clientIp, userAgent, fbp, fbc, hashedEm, hashedFn, hashedLn, hashedPh, hashedExternalId, sessionData, env }) {
-  if (!env.META_PIXEL_ID || !env.META_ACCESS_TOKEN) {
-    return { skipped: 'missing meta env', payload: null, response: null };
+async function sendToMetas({ body, clientIp, userAgent, fbp, fbc, hashedEm, hashedFn, hashedLn, hashedPh, hashedExternalId, sessionData, env }) {
+  // Collect all configured pixels
+  const pixels = [];
+  if (env.META_PIXEL_ID && env.META_ACCESS_TOKEN) {
+    pixels.push({ pixelId: env.META_PIXEL_ID, token: env.META_ACCESS_TOKEN });
+  }
+  for (let i = 2; i <= 10; i++) {
+    const pixelId = env[`META_PIXEL_ID_${i}`];
+    const token = env[`META_ACCESS_TOKEN_${i}`];
+    if (pixelId && token) {
+      pixels.push({ pixelId, token });
+    }
   }
 
+  if (pixels.length === 0) {
+    return [{ skipped: 'missing meta env', payload: null, response: null }];
+  }
+
+  // Build shared user_data
   const metaUserData = {
     client_ip_address: clientIp,
     client_user_agent: userAgent,
   };
-
   if (hashedEm) metaUserData.em = [hashedEm];
   if (hashedFn) metaUserData.fn = [hashedFn];
   if (hashedLn) metaUserData.ln = [hashedLn];
@@ -246,28 +231,39 @@ async function sendToMeta({ body, clientIp, userAgent, fbp, fbc, hashedEm, hashe
   if (fbp) metaUserData.fbp = fbp;
   if (fbc) metaUserData.fbc = fbc;
 
-  const payload = {
-    data: [{
-      event_name: body.event_name,
-      event_time: body.event_time,
-      event_id: body.event_id,
-      event_source_url: 'https://conxinch.com',
-      action_source: 'website',
-      user_data: metaUserData,
-    }],
-  };
+  const results = [];
 
-  if (env.META_TEST_EVENT_CODE) {
-    payload.test_event_code = env.META_TEST_EVENT_CODE;
+  for (const { pixelId, token } of pixels) {
+    const payload = {
+      data: [{
+        event_name: body.event_name,
+        event_time: body.event_time,
+        event_id: body.event_id,
+        event_source_url: 'https://go.ahemyes.com',
+        action_source: 'website',
+        user_data: metaUserData,
+      }],
+    };
+
+    if (env.META_TEST_EVENT_CODE) {
+      payload.test_event_code = env.META_TEST_EVENT_CODE;
+    }
+
+    const payloadJson = JSON.stringify(payload);
+
+    try {
+      const response = await fetch(`https://graph.facebook.com/v25.0/${pixelId}/events?access_token=${token}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payloadJson,
+      });
+      results.push({ pixelId, payload: payloadJson, response });
+    } catch (err) {
+      results.push({ pixelId, payload: payloadJson, error: err.message });
+    }
   }
 
-  const payloadJson = JSON.stringify(payload);
-  const response = await fetch(`https://graph.facebook.com/v25.0/${env.META_PIXEL_ID}/events?access_token=${env.META_ACCESS_TOKEN}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: payloadJson,
-  });
-  return { payload: payloadJson, response };
+  return results;
 }
 
 // -------------------------------------------------------
