@@ -110,7 +110,7 @@ export async function onRequestPost(context) {
       })()
     );
 
-    return new Response(JSON.stringify({ ok: true, debug_meta: metaResponseBody, debug_status: metaStatusCode }), {
+    return new Response(JSON.stringify({ ok: true }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
