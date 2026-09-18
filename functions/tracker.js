@@ -184,7 +184,7 @@ export async function onRequestPost(context) {
       })()
     );
 
-    return new Response(JSON.stringify({ ok: true }), {
+    return new Response(JSON.stringify({ ok: true, debug_meta: metaResponseBody, debug_ga4: ga4ResponseBody, debug_is_bot: isBot, debug_meta_sent: metaPayloadSent }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
