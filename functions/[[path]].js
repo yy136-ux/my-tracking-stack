@@ -29,7 +29,6 @@ export async function onRequestGet(context) {
              .replace(/dildo/gi, 'device');
 
   // 3. 替换页面里所有指向主域名的链接，确保用户在 go.ahemyes.com 上持续浏览
-  // ⚠️ 注意这里是 go.ahemyes.com
   html = html.replace(/https:\/\/www\.ahemyes\.com/gi, 'https://go.ahemyes.com');
   html = html.replace(/https:\/\/ahemyes\.com/gi, 'https://go.ahemyes.com');
 
