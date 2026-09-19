@@ -65,6 +65,7 @@ export async function onRequestPost(context) {
 
     const results = await Promise.allSettled([
       sendToMeta({ body, clientIp, userAgent, fbp, fbc, hashedEm, hashedFn, hashedLn, hashedPh, hashedExternalId, env }),
+      sendToMeta2({ body, clientIp, userAgent, fbp, fbc, hashedEm, hashedFn, hashedLn, hashedPh, hashedExternalId, env }),
       sendToGA4({ body, hashedEm, env }),
     ]);
 
@@ -148,13 +149,52 @@ async function sendToMeta({ body, clientIp, userAgent, fbp, fbc, hashedEm, hashe
       event_id: body.event_id,
       event_source_url: 'https://conxinch.com',
       action_source: 'website',
-      custom_data: body.custom_data || {},  // <--- 加上这一行，把金额传递给 Meta
+      custom_data: body.custom_data || {},
       user_data: metaUserData,
     }],
   };
 
   const payloadJson = JSON.stringify(payload);
   const response = await fetch(`https://graph.facebook.com/v25.0/${env.META_PIXEL_ID}/events?access_token=${env.META_ACCESS_TOKEN}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: payloadJson,
+  });
+  return { payload: payloadJson, response };
+}
+
+async function sendToMeta2({ body, clientIp, userAgent, fbp, fbc, hashedEm, hashedFn, hashedLn, hashedPh, hashedExternalId, env }) {
+  if (!env.META_PIXEL_ID_2 || !env.META_ACCESS_TOKEN_2) {
+    return { skipped: 'missing meta2 env', payload: null, response: null };
+  }
+
+  const metaUserData = {
+    client_ip_address: clientIp,
+    client_user_agent: userAgent,
+  };
+
+  if (hashedEm) metaUserData.em = [hashedEm];
+  if (hashedFn) metaUserData.fn = [hashedFn];
+  if (hashedLn) metaUserData.ln = [hashedLn];
+  if (hashedPh) metaUserData.ph = [hashedPh];
+  if (hashedExternalId) metaUserData.external_id = [hashedExternalId];
+  if (fbp) metaUserData.fbp = fbp;
+  if (fbc) metaUserData.fbc = fbc;
+
+  const payload = {
+    data: [{
+      event_name: body.event_name,
+      event_time: body.event_time,
+      event_id: body.event_id,
+      event_source_url: 'https://conxinch.com',
+      action_source: 'website',
+      custom_data: body.custom_data || {},
+      user_data: metaUserData,
+    }],
+  };
+
+  const payloadJson = JSON.stringify(payload);
+  const response = await fetch(`https://graph.facebook.com/v25.0/${env.META_PIXEL_ID_2}/events?access_token=${env.META_ACCESS_TOKEN_2}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: payloadJson,
