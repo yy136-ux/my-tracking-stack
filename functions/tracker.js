@@ -110,7 +110,7 @@ export async function onRequestPost(context) {
       })()
     );
 
-    return new Response(JSON.stringify({ ok: true, debug_meta: metaResponseBody, debug_status: metaStatusCode }), {
+    return new Response(JSON.stringify({ ok: true }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -151,10 +151,6 @@ async function sendToMeta({ body, clientIp, userAgent, fbp, fbc, hashedEm, hashe
       user_data: metaUserData,
     }],
   };
-
-  if (env.META_TEST_EVENT_CODE) {
-    payload.test_event_code = env.META_TEST_EVENT_CODE;
-  }
 
   const payloadJson = JSON.stringify(payload);
   const response = await fetch(`https://graph.facebook.com/v25.0/${env.META_PIXEL_ID}/events?access_token=${env.META_ACCESS_TOKEN}`, {
