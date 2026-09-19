@@ -148,6 +148,7 @@ async function sendToMeta({ body, clientIp, userAgent, fbp, fbc, hashedEm, hashe
       event_id: body.event_id,
       event_source_url: 'https://conxinch.com',
       action_source: 'website',
+      custom_data: body.custom_data || {},  // <--- 加上这一行，把金额传递给 Meta
       user_data: metaUserData,
     }],
   };
