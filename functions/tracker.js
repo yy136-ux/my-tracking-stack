@@ -146,7 +146,7 @@ async function sendToMeta({ body, clientIp, userAgent, fbp, fbc, hashedEm, hashe
       event_name: body.event_name,
       event_time: body.event_time,
       event_id: body.event_id,
-      event_source_url: 'https://go.ahemyes.com',
+      event_source_url: 'https://conxinch.com',
       action_source: 'website',
       user_data: metaUserData,
     }],
