@@ -63,9 +63,11 @@ export async function onRequestPost(context) {
     const hashedPh = await sha256(normalizePhone(userData.ph, env.DEFAULT_COUNTRY_CODE));
     const hashedExternalId = await sha256(externalId);
 
+    // 同时发送到三个像素和 GA4
     const results = await Promise.allSettled([
       sendToMeta({ body, clientIp, userAgent, fbp, fbc, hashedEm, hashedFn, hashedLn, hashedPh, hashedExternalId, env }),
       sendToMeta2({ body, clientIp, userAgent, fbp, fbc, hashedEm, hashedFn, hashedLn, hashedPh, hashedExternalId, env }),
+      sendToMeta3({ body, clientIp, userAgent, fbp, fbc, hashedEm, hashedFn, hashedLn, hashedPh, hashedExternalId, env }),
       sendToGA4({ body, hashedEm, env }),
     ]);
 
@@ -195,6 +197,45 @@ async function sendToMeta2({ body, clientIp, userAgent, fbp, fbc, hashedEm, hash
 
   const payloadJson = JSON.stringify(payload);
   const response = await fetch(`https://graph.facebook.com/v25.0/${env.META_PIXEL_ID_2}/events?access_token=${env.META_ACCESS_TOKEN_2}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: payloadJson,
+  });
+  return { payload: payloadJson, response };
+}
+
+async function sendToMeta3({ body, clientIp, userAgent, fbp, fbc, hashedEm, hashedFn, hashedLn, hashedPh, hashedExternalId, env }) {
+  if (!env.META_PIXEL_ID_3 || !env.META_ACCESS_TOKEN_3) {
+    return { skipped: 'missing meta3 env', payload: null, response: null };
+  }
+
+  const metaUserData = {
+    client_ip_address: clientIp,
+    client_user_agent: userAgent,
+  };
+
+  if (hashedEm) metaUserData.em = [hashedEm];
+  if (hashedFn) metaUserData.fn = [hashedFn];
+  if (hashedLn) metaUserData.ln = [hashedLn];
+  if (hashedPh) metaUserData.ph = [hashedPh];
+  if (hashedExternalId) metaUserData.external_id = [hashedExternalId];
+  if (fbp) metaUserData.fbp = fbp;
+  if (fbc) metaUserData.fbc = fbc;
+
+  const payload = {
+    data: [{
+      event_name: body.event_name,
+      event_time: body.event_time,
+      event_id: body.event_id,
+      event_source_url: 'https://conxinch.com',
+      action_source: 'website',
+      custom_data: body.custom_data || {},
+      user_data: metaUserData,
+    }],
+  };
+
+  const payloadJson = JSON.stringify(payload);
+  const response = await fetch(`https://graph.facebook.com/v25.0/${env.META_PIXEL_ID_3}/events?access_token=${env.META_ACCESS_TOKEN_3}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: payloadJson,
